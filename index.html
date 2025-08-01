@@ -20,20 +20,27 @@
     <script type="module">
         // Import Firebase SDKs
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Firebase Configuration and Initialization ---
-        // This app is built to work exclusively on a live server.
-        // The variables below are automatically provided by the hosting environment.
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- Your Firebase Configuration ---
+        // This object connects your app to your Firebase project.
+        const firebaseConfig = {
+          apiKey: "AIzaSyB1tHmSUWTsfFulvPRB1184CkNpVhRJCyg",
+          authDomain: "customer-contact-info.firebaseapp.com",
+          projectId: "customer-contact-info",
+          storageBucket: "customer-contact-info.firebasestorage.app",
+          messagingSenderId: "789500162644",
+          appId: "1:789500162644:web:93f94efc70cfa1f99433c1",
+          measurementId: "G-2YGBKSJ4KP"
+        };
+        
+        // This ID is used to create a unique data collection for your contacts.
+        const appId = firebaseConfig.projectId;
 
         let db, auth;
         let currentUserId = null;
 
-        // --- Helper Functions ---
         /**
          * Generates and triggers the download of a vCard file from a contact object.
          * @param {object} contact - The contact data with name, phone, and company.
@@ -243,12 +250,7 @@ END:VCARD`;
               db = getFirestore(firebaseApp);
               auth = getAuth(firebaseApp);
               
-              let user = null;
-              if (initialAuthToken) {
-                  user = (await signInWithCustomToken(auth, initialAuthToken)).user;
-              } else {
-                  user = (await signInAnonymously(auth)).user;
-              }
+              const user = (await signInAnonymously(auth)).user;
               currentUserId = user.uid;
 
               // Check URL and render the correct view
