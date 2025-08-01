@@ -27,10 +27,10 @@
         // This app is designed to work in two modes: local and live.
         // In live mode (e.g., on GitHub Pages), it uses Firebase.
         // In local mode (on your desktop), it uses browser local storage.
-        const isLive = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'local-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const isLive = typeof __firebase_config !== 'undefined';
+        const firebaseConfig = isLive ? JSON.parse(__firebase_config) : {};
+        const appId = isLive ? __app_id : 'local-app-id';
+        const initialAuthToken = isLive ? __initial_auth_token : null;
 
         let db, auth;
         let currentUserId = 'local-user-id'; // Default for local mode
@@ -69,6 +69,11 @@ END:VCARD`;
                             : "px-4 py-2 bg-gray-400 text-white rounded-lg shadow-md cursor-not-allowed";
                         const buttonDisabled = hasRequiredInfo ? "" : "disabled";
                         
+                        // Escape single quotes for the onclick function to prevent errors
+                        const escapedName = (contact.name || '').replace(/'/g, "\\'");
+                        const escapedPhone = (contact.phone || '').replace(/'/g, "\\'");
+                        const escapedCompany = (contact.company || '').replace(/'/g, "\\'");
+
                         return `
                             <div class="p-4 border border-gray-200 rounded-lg flex items-center justify-between">
                                 <div>
@@ -76,7 +81,7 @@ END:VCARD`;
                                     <p class="text-sm text-gray-600">${contact.phone || 'N/A'}</p>
                                     ${contact.company ? `<p class="text-xs text-gray-500">${contact.company}</p>` : ''}
                                 </div>
-                                <button onclick="downloadVCard({ name: '${(contact.name || '').replace(/'/g, "\\'")}', phone: '${(contact.phone || '').replace(/'/g, "\\'")}', company: '${(contact.company || '').replace(/'/g, "\\'")}' })"
+                                <button onclick="downloadVCard({ name: '${escapedName}', phone: '${escapedPhone}', company: '${escapedCompany}' })"
                                         class="${buttonClasses}" ${buttonDisabled}>
                                     Save to Phone
                                 </button>
