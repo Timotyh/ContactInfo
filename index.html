@@ -20,21 +20,24 @@
     <script type="module">
         // Import Firebase SDKs
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Firebase Configuration and Initialization ---
-        // This app is designed to work in two modes: local and live.
-        // You can switch to local mode by setting isLive to false for testing.
-        const isLive = true; 
+        // This app is built to work exclusively on a live server.
+        // The variables below are automatically provided by the hosting environment.
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'local-app-id';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let db, auth;
-        let currentUserId = 'local-user-id'; // Default for local mode
+        let currentUserId = null;
 
         // --- Helper Functions ---
+        /**
+         * Generates and triggers the download of a vCard file from a contact object.
+         * @param {object} contact - The contact data with name, phone, and company.
+         */
         const downloadVCard = (contact) => {
             const vCardContent = `BEGIN:VCARD
 VERSION:3.0
@@ -54,11 +57,21 @@ END:VCARD`;
             URL.revokeObjectURL(url);
         };
 
-        // --- Component Rendering Functions ---
+        /**
+         * Renders the dashboard view for the owner.
+         */
         const renderDashboard = () => {
             const shareLink = `${window.location.origin}${window.location.pathname}?userId=${currentUserId}`;
             
-            const renderContacts = (contacts) => {
+            const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${currentUserId}`);
+            const q = query(contactsCollectionRef);
+
+            // Set up a real-time listener to render contacts
+            onSnapshot(q, (querySnapshot) => {
+                const contacts = [];
+                querySnapshot.forEach((doc) => contacts.push({ ...doc.data(), id: doc.id }));
+                contacts.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+
                 let contactsHtml = '';
                 if (contacts.length > 0) {
                     contactsHtml = contacts.map(contact => {
@@ -68,7 +81,6 @@ END:VCARD`;
                             : "px-4 py-2 bg-gray-400 text-white rounded-lg shadow-md cursor-not-allowed";
                         const buttonDisabled = hasRequiredInfo ? "" : "disabled";
                         
-                        // Escape single quotes for the onclick function to prevent errors
                         const escapedName = (contact.name || '').replace(/'/g, "\\'");
                         const escapedPhone = (contact.phone || '').replace(/'/g, "\\'");
                         const escapedCompany = (contact.company || '').replace(/'/g, "\\'");
@@ -101,7 +113,6 @@ END:VCARD`;
                             <h2 class="text-xl font-bold mb-2">Your Shareable Link</h2>
                             <p class="text-gray-600 mb-2">
                                 Send this link to a customer to have them submit their contact information.
-                                ${isLive ? '' : '<p class="text-red-500 text-sm">Note: This link will only work when hosted on a live server.</p>'}
                             </p>
                             <div class="relative">
                                 <input type="text" id="shareLinkInput" value="${shareLink}" readonly
@@ -122,24 +133,13 @@ END:VCARD`;
                         </div>
                     </div>
                 `;
-            };
-
-            // Handle data based on mode
-            if (isLive) {
-                const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${currentUserId}`);
-                const q = query(contactsCollectionRef);
-                onSnapshot(q, (querySnapshot) => {
-                    const contacts = [];
-                    querySnapshot.forEach((doc) => contacts.push({ ...doc.data(), id: doc.id }));
-                    contacts.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-                    renderContacts(contacts);
-                });
-            } else {
-                const contacts = JSON.parse(localStorage.getItem(`contacts_${currentUserId}`) || '[]');
-                renderContacts(contacts);
-            }
+            });
         };
 
+        /**
+         * Renders the contact form for a customer.
+         * @param {string} ownerId - The owner's user ID.
+         */
         const renderContactForm = (ownerId) => {
             document.getElementById('app').innerHTML = `
                 <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg mx-auto">
@@ -191,20 +191,13 @@ END:VCARD`;
                 const company = document.getElementById('company').value;
 
                 try {
-                    if (isLive) {
-                        const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${ownerId}`);
-                        await addDoc(contactsCollectionRef, {
-                            name: name,
-                            phone: phone,
-                            company: company,
-                            timestamp: Timestamp.now()
-                        });
-                    } else {
-                        // Store locally for now
-                        const contacts = JSON.parse(localStorage.getItem(`contacts_${ownerId}`) || '[]');
-                        contacts.push({ name, phone, company, timestamp: { seconds: Date.now() / 1000 } });
-                        localStorage.setItem(`contacts_${ownerId}`, JSON.stringify(contacts));
-                    }
+                    const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${ownerId}`);
+                    await addDoc(contactsCollectionRef, {
+                        name: name,
+                        phone: phone,
+                        company: company,
+                        timestamp: Timestamp.now()
+                    });
 
                     formMessage.textContent = 'Thank you! Your information has been submitted.';
                     document.getElementById('contactForm').reset();
@@ -218,6 +211,9 @@ END:VCARD`;
             });
         };
 
+        /**
+         * Copies the shareable link to the user's clipboard.
+         */
         const copyToClipboard = () => {
             const shareLinkInput = document.getElementById('shareLinkInput');
             shareLinkInput.select();
@@ -241,41 +237,35 @@ END:VCARD`;
         document.addEventListener('DOMContentLoaded', async () => {
           const appDiv = document.getElementById('app');
 
-          const initializeAndRender = async () => {
-              if (isLive) {
-                  try {
-                      // Initialize and authenticate with Firebase
-                      const firebaseApp = initializeApp(firebaseConfig);
-                      db = getFirestore(firebaseApp);
-                      auth = getAuth(firebaseApp);
-                      
-                      let user = auth.currentUser;
-                      if (!user) {
-                          const authPromise = initialAuthToken 
-                              ? signInWithCustomToken(auth, initialAuthToken) 
-                              : signInAnonymously(auth);
-                          user = (await authPromise).user;
-                      }
-                      currentUserId = user.uid;
-
-                  } catch (error) {
-                      console.error("Firebase initialization error:", error);
-                      appDiv.innerHTML = `<div class="text-center text-red-500">Firebase failed to initialize. Please check your configuration.</div>`;
-                      return;
-                  }
+          try {
+              // Initialize Firebase and authenticate with a user
+              const firebaseApp = initializeApp(firebaseConfig);
+              db = getFirestore(firebaseApp);
+              auth = getAuth(firebaseApp);
+              
+              let user = null;
+              if (initialAuthToken) {
+                  user = (await signInWithCustomToken(auth, initialAuthToken)).user;
+              } else {
+                  user = (await signInAnonymously(auth)).user;
               }
+              currentUserId = user.uid;
 
+              // Check URL and render the correct view
               const params = new URLSearchParams(window.location.search);
               const ownerId = params.get('userId');
 
-              if (ownerId && ownerId !== currentUserId) {
+              if (ownerId && ownerId === currentUserId) {
+                  renderDashboard();
+              } else if (ownerId) {
                   renderContactForm(ownerId);
               } else {
                   renderDashboard();
               }
-          };
-
-          initializeAndRender();
+          } catch (error) {
+              console.error("Initialization error:", error);
+              appDiv.innerHTML = `<div class="text-center text-red-500">An unexpected error occurred. Please try again.</div>`;
+          }
         });
     </script>
 </body>
