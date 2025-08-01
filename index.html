@@ -66,6 +66,8 @@ END:VCARD`;
         const renderDashboard = () => {
             const appDiv = document.getElementById('app');
             const shareLink = `${window.location.origin}${window.location.pathname}?userId=${currentUserId}`;
+            
+            // Correct Firestore path construction
             const firestorePath = `public/data/contacts_${currentUserId}`;
             
             const contactsCollectionRef = collection(db, firestorePath);
