@@ -24,7 +24,6 @@
         import { getFirestore, collection, addDoc, onSnapshot, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Your Firebase Configuration ---
-        // This object connects your app to your Firebase project.
         const firebaseConfig = {
           apiKey: "AIzaSyB1tHmSUWTsfFulvPRB1184CkNpVhRJCyg",
           authDomain: "customer-contact-info.firebaseapp.com",
@@ -35,9 +34,6 @@
           measurementId: "G-2YGBKSJ4KP"
         };
         
-        // This ID is used to create a unique data collection for your contacts.
-        const appId = firebaseConfig.projectId;
-
         let db, auth;
         let currentUserId = null;
 
@@ -68,9 +64,11 @@ END:VCARD`;
          * Renders the dashboard view for the owner.
          */
         const renderDashboard = () => {
+            const appDiv = document.getElementById('app');
             const shareLink = `${window.location.origin}${window.location.pathname}?userId=${currentUserId}`;
+            const firestorePath = `public/data/contacts_${currentUserId}`;
             
-            const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${currentUserId}`);
+            const contactsCollectionRef = collection(db, firestorePath);
             const q = query(contactsCollectionRef);
 
             // Set up a real-time listener to render contacts
@@ -110,7 +108,7 @@ END:VCARD`;
                     contactsHtml = `<p class="text-center text-gray-500">No contacts submitted yet.</p>`;
                 }
 
-                document.getElementById('app').innerHTML = `
+                appDiv.innerHTML = `
                     <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-2xl mx-auto">
                         <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Your Contact Dashboard</h1>
                         <div class="text-center text-sm text-gray-500 mb-4">
@@ -148,7 +146,8 @@ END:VCARD`;
          * @param {string} ownerId - The owner's user ID.
          */
         const renderContactForm = (ownerId) => {
-            document.getElementById('app').innerHTML = `
+            const appDiv = document.getElementById('app');
+            appDiv.innerHTML = `
                 <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg mx-auto">
                     <div class="flex justify-between items-center mb-6">
                       <h1 class="text-2xl font-bold text-gray-800">Contact Form</h1>
@@ -198,7 +197,8 @@ END:VCARD`;
                 const company = document.getElementById('company').value;
 
                 try {
-                    const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${ownerId}`);
+                    const firestorePath = `public/data/contacts_${ownerId}`;
+                    const contactsCollectionRef = collection(db, firestorePath);
                     await addDoc(contactsCollectionRef, {
                         name: name,
                         phone: phone,
@@ -224,16 +224,11 @@ END:VCARD`;
         const copyToClipboard = () => {
             const shareLinkInput = document.getElementById('shareLinkInput');
             shareLinkInput.select();
-            shareLinkInput.setSelectionRange(0, 99999);
-            try {
-                document.execCommand('copy');
-                const copyMessage = document.getElementById('copyMessage');
-                copyMessage.textContent = 'Link copied!';
-                copyMessage.classList.remove('hidden');
-                setTimeout(() => copyMessage.classList.add('hidden'), 3000);
-            } catch (err) {
-                console.error('Failed to copy text', err);
-            }
+            document.execCommand('copy');
+            const copyMessage = document.getElementById('copyMessage');
+            copyMessage.textContent = 'Link copied!';
+            copyMessage.classList.remove('hidden');
+            setTimeout(() => copyMessage.classList.add('hidden'), 3000);
         };
 
         // Make functions globally accessible for event listeners in innerHTML
@@ -244,26 +239,14 @@ END:VCARD`;
         document.addEventListener('DOMContentLoaded', async () => {
           const appDiv = document.getElementById('app');
 
-          // Check if Firebase configuration is missing
-          if (!firebaseConfig.apiKey) {
-            appDiv.innerHTML = `
-              <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg mx-auto text-center">
-                  <h1 class="text-3xl font-bold text-red-600 mb-4">Firebase Configuration Missing</h1>
-                  <p class="text-gray-600">Please open the code and add your Firebase configuration to the script.</p>
-                  <p class="mt-4 text-sm text-gray-500">This is a one-time setup step to connect your app to a secure cloud database.</p>
-              </div>
-            `;
-            return;
-          }
-
           try {
               // Initialize Firebase and authenticate with a user
               const firebaseApp = initializeApp(firebaseConfig);
               db = getFirestore(firebaseApp);
               auth = getAuth(firebaseApp);
               
-              const user = (await signInAnonymously(auth)).user;
-              currentUserId = user.uid;
+              const userCredential = await signInAnonymously(auth);
+              currentUserId = userCredential.user.uid;
 
               // Check URL and render the correct view
               const params = new URLSearchParams(window.location.search);
