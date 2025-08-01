@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Contact Saver</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Main App Container -->
+    <div id="app" class="w-full max-w-2xl">
+        <div class="text-center text-gray-500">Loading...</div>
+    </div>
+
+    <script type="module">
+        // Import Firebase SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Configuration and Initialization ---
+        // This app is designed to work in two modes: local and live.
+        // In live mode (e.g., on GitHub Pages), it uses Firebase.
+        // In local mode (on your desktop), it uses browser local storage.
+        const isLive = typeof __firebase_config !== 'undefined';
+        const firebaseConfig = isLive ? JSON.parse(__firebase_config) : {};
+        const appId = isLive ? __app_id : 'local-app-id';
+        const initialAuthToken = isLive ? __initial_auth_token : null;
+
+        let db, auth;
+        let currentUserId = 'local-user-id'; // Default for local mode
+
+        // --- Helper Functions ---
+        const downloadVCard = (contact) => {
+            const vCardContent = `BEGIN:VCARD
+VERSION:3.0
+FN:${contact.name}
+TEL;TYPE=CELL:${contact.phone}
+${contact.company ? `ORG:${contact.company}` : ''}
+END:VCARD`;
+
+            const blob = new Blob([vCardContent], { type: 'text/vcard' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${contact.name.replace(/\s/g, '_')}.vcf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        };
+
+        // --- Component Rendering Functions ---
+        const renderDashboard = () => {
+            const shareLink = `${window.location.origin}${window.location.pathname}?userId=${currentUserId}`;
+            
+            const renderContacts = (contacts) => {
+                let contactsHtml = '';
+                if (contacts.length > 0) {
+                    contactsHtml = contacts.map(contact => {
+                        const hasRequiredInfo = contact.name && contact.phone;
+                        const buttonClasses = hasRequiredInfo 
+                            ? "px-4 py-2 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600 transition-colors"
+                            : "px-4 py-2 bg-gray-400 text-white rounded-lg shadow-md cursor-not-allowed";
+                        const buttonDisabled = hasRequiredInfo ? "" : "disabled";
+                        
+                        return `
+                            <div class="p-4 border border-gray-200 rounded-lg flex items-center justify-between">
+                                <div>
+                                    <p class="font-semibold text-gray-800">${contact.name || 'N/A'}</p>
+                                    <p class="text-sm text-gray-600">${contact.phone || 'N/A'}</p>
+                                    ${contact.company ? `<p class="text-xs text-gray-500">${contact.company}</p>` : ''}
+                                </div>
+                                <button onclick="downloadVCard({ name: '${(contact.name || '').replace(/'/g, "\\'")}', phone: '${(contact.phone || '').replace(/'/g, "\\'")}', company: '${(contact.company || '').replace(/'/g, "\\'")}' })"
+                                        class="${buttonClasses}" ${buttonDisabled}>
+                                    Save to Phone
+                                </button>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    contactsHtml = `<p class="text-center text-gray-500">No contacts submitted yet.</p>`;
+                }
+
+                document.getElementById('app').innerHTML = `
+                    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-2xl mx-auto">
+                        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Your Contact Dashboard</h1>
+                        <div class="text-center text-sm text-gray-500 mb-4">
+                            Your User ID: <span class="font-mono text-gray-700">${currentUserId}</span>
+                        </div>
+                        <div class="mb-8 p-4 bg-gray-50 rounded-lg">
+                            <h2 class="text-xl font-bold mb-2">Your Shareable Link</h2>
+                            <p class="text-gray-600 mb-2">
+                                Send this link to a customer to have them submit their contact information.
+                                ${isLive ? '' : '<p class="text-red-500 text-sm">Note: This link will only work when hosted on a live server.</p>'}
+                            </p>
+                            <div class="relative">
+                                <input type="text" id="shareLinkInput" value="${shareLink}" readonly
+                                    class="w-full p-3 pr-12 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 text-sm md:text-base cursor-text" />
+                                <button onclick="copyToClipboard()"
+                                        class="absolute top-1/2 right-2 -translate-y-1/2 p-2 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                                        <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <p id="copyMessage" class="mt-2 text-sm text-center text-green-600 hidden"></p>
+                        </div>
+                        <h2 class="text-2xl font-bold mb-4">Submitted Contacts</h2>
+                        <div class="space-y-4" id="contactsList">
+                            ${contactsHtml}
+                        </div>
+                    </div>
+                `;
+            };
+
+            // Handle data based on mode
+            if (isLive) {
+                const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${currentUserId}`);
+                const q = query(contactsCollectionRef);
+                onSnapshot(q, (querySnapshot) => {
+                    const contacts = [];
+                    querySnapshot.forEach((doc) => contacts.push({ ...doc.data(), id: doc.id }));
+                    contacts.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                    renderContacts(contacts);
+                });
+            } else {
+                const contacts = JSON.parse(localStorage.getItem(`contacts_${currentUserId}`) || '[]');
+                renderContacts(contacts);
+            }
+        };
+
+        const renderContactForm = (ownerId) => {
+            document.getElementById('app').innerHTML = `
+                <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                      <h1 class="text-2xl font-bold text-gray-800">Contact Form</h1>
+                      <a href="${window.location.origin}${window.location.pathname}" class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors">
+                        &larr; Back to Dashboard
+                      </a>
+                    </div>
+                    <p class="text-center text-gray-600 mb-8">
+                        Please fill out this form so we can save your contact information.
+                    </p>
+                    <form id="contactForm" class="space-y-6">
+                        <div>
+                            <label for="name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                            <input type="text" id="name" required placeholder="e.g., John Doe"
+                                class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition-colors" />
+                        </div>
+                        <div>
+                            <label for="phone" class="block text-sm font-medium text-gray-700">Phone Number</label>
+                            <input type="tel" id="phone" required placeholder="e.g., +15551234567"
+                                class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition-colors" />
+                        </div>
+                        <div>
+                            <label for="company" class="block text-sm font-medium text-gray-700">Company (Optional)</label>
+                            <input type="text" id="company" placeholder="e.g., ABC Company"
+                                class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition-colors" />
+                        </div>
+                        <button type="submit" id="submitButton"
+                                class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-lg font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                            Submit
+                        </button>
+                    </form>
+                    <p id="formMessage" class="mt-4 text-center text-green-600"></p>
+                </div>
+            `;
+            
+            document.getElementById('contactForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const submitButton = document.getElementById('submitButton');
+                const formMessage = document.getElementById('formMessage');
+                
+                submitButton.disabled = true;
+                submitButton.textContent = 'Submitting...';
+                formMessage.textContent = '';
+
+                const name = document.getElementById('name').value;
+                const phone = document.getElementById('phone').value;
+                const company = document.getElementById('company').value;
+
+                try {
+                    if (isLive) {
+                        const contactsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', `contacts_${ownerId}`);
+                        await addDoc(contactsCollectionRef, {
+                            name: name,
+                            phone: phone,
+                            company: company,
+                            timestamp: Timestamp.now()
+                        });
+                    } else {
+                        // Store locally for now
+                        const contacts = JSON.parse(localStorage.getItem(`contacts_${ownerId}`) || '[]');
+                        contacts.push({ name, phone, company, timestamp: { seconds: Date.now() / 1000 } });
+                        localStorage.setItem(`contacts_${ownerId}`, JSON.stringify(contacts));
+                    }
+
+                    formMessage.textContent = 'Thank you! Your information has been submitted.';
+                    document.getElementById('contactForm').reset();
+                } catch (error) {
+                    console.error('Error submitting contact:', error);
+                    formMessage.textContent = 'An error occurred. Please try again.';
+                } finally {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Submit';
+                }
+            });
+        };
+
+        const copyToClipboard = () => {
+            const shareLinkInput = document.getElementById('shareLinkInput');
+            shareLinkInput.select();
+            shareLinkInput.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                const copyMessage = document.getElementById('copyMessage');
+                copyMessage.textContent = 'Link copied!';
+                copyMessage.classList.remove('hidden');
+                setTimeout(() => copyMessage.classList.add('hidden'), 3000);
+            } catch (err) {
+                console.error('Failed to copy text', err);
+            }
+        };
+
+        // Make functions globally accessible for event listeners in innerHTML
+        window.downloadVCard = downloadVCard;
+        window.copyToClipboard = copyToClipboard;
+
+        // --- Main App Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+          const appDiv = document.getElementById('app');
+
+          const initializeAndRender = async () => {
+              if (isLive) {
+                  try {
+                      // Initialize and authenticate with Firebase
+                      const firebaseApp = initializeApp(firebaseConfig);
+                      db = getFirestore(firebaseApp);
+                      auth = getAuth(firebaseApp);
+                      
+                      let user = auth.currentUser;
+                      if (!user) {
+                          if (initialAuthToken) {
+                              user = (await signInWithCustomToken(auth, initialAuthToken)).user;
+                          } else {
+                              user = (await signInAnonymously(auth)).user;
+                          }
+                      }
+                      currentUserId = user.uid;
+
+                  } catch (error) {
+                      console.error("Firebase initialization error:", error);
+                      appDiv.innerHTML = `<div class="text-center text-red-500">Firebase failed to initialize. Please check your configuration.</div>`;
+                      return;
+                  }
+              }
+
+              const params = new URLSearchParams(window.location.search);
+              const ownerId = params.get('userId');
+
+              if (ownerId && ownerId !== currentUserId) {
+                  renderContactForm(ownerId);
+              } else {
+                  renderDashboard();
+              }
+          };
+
+          initializeAndRender();
+        });
+    </script>
+</body>
+</html>
