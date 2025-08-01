@@ -27,7 +27,7 @@
         // This app is designed to work in two modes: local and live.
         // In live mode (e.g., on GitHub Pages), it uses Firebase.
         // In local mode (on your desktop), it uses browser local storage.
-        const isLive = typeof __firebase_config !== 'undefined';
+        const isLive = typeof __firebase_config !== 'undefined' && __firebase_config !== null && __firebase_config.length > 0;
         const firebaseConfig = isLive ? JSON.parse(__firebase_config) : {};
         const appId = isLive ? __app_id : 'local-app-id';
         const initialAuthToken = isLive ? __initial_auth_token : null;
@@ -234,7 +234,7 @@ END:VCARD`;
         window.copyToClipboard = copyToClipboard;
 
         // --- Main App Initialization ---
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
           const appDiv = document.getElementById('app');
 
           const initializeAndRender = async () => {
@@ -247,11 +247,10 @@ END:VCARD`;
                       
                       let user = auth.currentUser;
                       if (!user) {
-                          if (initialAuthToken) {
-                              user = (await signInWithCustomToken(auth, initialAuthToken)).user;
-                          } else {
-                              user = (await signInAnonymously(auth)).user;
-                          }
+                          const authPromise = initialAuthToken 
+                              ? signInWithCustomToken(auth, initialAuthToken) 
+                              : signInAnonymously(auth);
+                          user = (await authPromise).user;
                       }
                       currentUserId = user.uid;
 
