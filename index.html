@@ -244,6 +244,18 @@ END:VCARD`;
         document.addEventListener('DOMContentLoaded', async () => {
           const appDiv = document.getElementById('app');
 
+          // Check if Firebase configuration is missing
+          if (!firebaseConfig.apiKey) {
+            appDiv.innerHTML = `
+              <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg mx-auto text-center">
+                  <h1 class="text-3xl font-bold text-red-600 mb-4">Firebase Configuration Missing</h1>
+                  <p class="text-gray-600">Please open the code and add your Firebase configuration to the script.</p>
+                  <p class="mt-4 text-sm text-gray-500">This is a one-time setup step to connect your app to a secure cloud database.</p>
+              </div>
+            `;
+            return;
+          }
+
           try {
               // Initialize Firebase and authenticate with a user
               const firebaseApp = initializeApp(firebaseConfig);
