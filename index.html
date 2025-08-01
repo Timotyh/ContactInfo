@@ -25,12 +25,11 @@
 
         // --- Firebase Configuration and Initialization ---
         // This app is designed to work in two modes: local and live.
-        // In live mode (e.g., on GitHub Pages), it uses Firebase.
-        // In local mode (on your desktop), it uses browser local storage.
-        const isLive = typeof __firebase_config !== 'undefined';
-        const firebaseConfig = isLive ? JSON.parse(__firebase_config) : {};
-        const appId = isLive ? __app_id : 'local-app-id';
-        const initialAuthToken = isLive ? __initial_auth_token : null;
+        // You can switch to local mode by setting isLive to false for testing.
+        const isLive = true; 
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'local-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let db, auth;
         let currentUserId = 'local-user-id'; // Default for local mode
